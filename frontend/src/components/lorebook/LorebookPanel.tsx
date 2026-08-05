@@ -61,7 +61,7 @@ export default function LorebookPanel() {
 
   const runPreview = async () => {
     setPreview(null);
-    const res = await api.previewLorebook(currentLorebook.name, previewText);
+    const res = await api.previewLorebook(currentLorebook.id, previewText);
     setPreview(res);
   };
 
@@ -78,7 +78,7 @@ export default function LorebookPanel() {
           <b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentLorebook.name}</b>
           <div className="row" style={{ gap: 4 }}>
             <button className="btn sm" title="Export as SillyTavern-compatible JSON" onClick={() => void (async () => {
-              const lb = await api.exportLorebook(currentLorebook.name);
+              const lb = await api.exportLorebook(currentLorebook.id);
               const blob = new Blob([JSON.stringify(lb, null, 2)], { type: 'application/json' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
@@ -89,7 +89,7 @@ export default function LorebookPanel() {
           </div>
         </div>
         <select
-          value={currentLorebook.name}
+          value={currentLorebook.id}
           onChange={(e) => { void selectLorebook(e.target.value); }}
           style={{ width: '100%', background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px' }}
         >
@@ -163,7 +163,7 @@ export default function LorebookPanel() {
         <EntryEditor
           entry={editing}
           entryId={editingId}
-          lorebookId={currentLorebook.name}
+          lorebookId={currentLorebook.id}
           isNew={creating}
           onClose={() => { setEditing(null); setEditingId(null); setCreating(false); }}
           onSaved={async () => { setEditing(null); setEditingId(null); setCreating(false); await refreshLorebooks(); }}

@@ -60,6 +60,8 @@ export interface LorebookEntry {
 }
 
 export interface Lorebook {
+  /** Canonical id (slugified name), matches the on-disk filename. */
+  id: string;
   name: string;
   description: string;
   entries: Record<string, LorebookEntry>;

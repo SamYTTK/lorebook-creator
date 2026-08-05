@@ -221,7 +221,7 @@ export const useStore = create<StoreState>((set, get) => {
 
     createLorebook: async (name, description = '') => {
       const lb = await api.createLorebook(name, description);
-      await api.selectLorebook(lb.name);
+      await api.selectLorebook(lb.id);
       await get().refreshLorebooks();
     },
 

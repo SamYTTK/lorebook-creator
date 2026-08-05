@@ -81,11 +81,21 @@ router.post('/chat', async (req: Request, res: Response) => {
   workingSession.messages.push(userMsg);
   workingSession.model = body.model ?? settings.api.model;
 
+  const assistantId = uuidv4();
+  const assistantMsg: HistoryMessage = {
+    id: assistantId,
+    role: 'assistant',
+    content: '',
+    createdAt: Date.now(),
+  };
+  workingSession.messages.push(assistantMsg);
+
   // Save pending state so history is durable even if streaming fails.
   saveSession(workingSession);
 
-  // Build history for the request
-  const workingHistory = body.history && body.history.length ? body.history : workingSession.messages;
+  // Build history for the request (skip the empty assistant placeholder we just added)
+  const workingHistory = (body.history && body.history.length ? body.history : workingSession.messages)
+    .filter((m) => !(m.role === 'assistant' && !m.content));
   const chatMessages = await historyToChatMessages(workingHistory);
 
   // Ensure the latest user message is present (it is part of workingHistory or workingSession)
@@ -121,14 +131,7 @@ router.post('/chat', async (req: Request, res: Response) => {
   const abortController = new AbortController();
   req.on('close', () => abortController.abort());
 
-  const assistantId = uuidv4();
   const reasoning: string[] = [];
-  const assistantMsg: HistoryMessage = {
-    id: assistantId,
-    role: 'assistant',
-    content: '',
-    createdAt: Date.now(),
-  };
 
   const send = (event: string, data: unknown) => sseSend(res, event, data);
   let completed = false;

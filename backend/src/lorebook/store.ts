@@ -13,7 +13,7 @@ export function listLorebooks(): Array<{ id: string; name: string; description: 
   const out: Array<{ id: string; name: string; description: string; entryCount: number; updatedAt: number }> = [];
   for (const file of files) {
     try {
-      const raw = readJson<Lorebook>(path.join(LOREBOOKS_DIR, file), { name: '', description: '', entries: {} });
+      const raw = readJson<Lorebook>(path.join(LOREBOOKS_DIR, file), { id: path.basename(file, '.json'), name: '', description: '', entries: {} });
       const id = path.basename(file, '.json');
       out.push({
         id,
@@ -32,8 +32,9 @@ export function listLorebooks(): Array<{ id: string; name: string; description: 
 export function getLorebook(id: string): Lorebook | null {
   const file = fileFor(id);
   if (!fs.existsSync(file)) return null;
-  const raw = readJson<Lorebook>(file, { name: '', description: '', entries: {} });
+  const raw = readJson<Lorebook>(file, { id, name: '', description: '', entries: {} });
   raw.entries = raw.entries || {};
+  raw.id = path.basename(file, '.json');
   return raw;
 }
 
@@ -44,13 +45,14 @@ export function createLorebook(name: string, description = '', entries: Record<s
     // unique-ify the id
     return createLorebook(`${name} ${Date.now()}`, description, entries);
   }
-  const lorebook: Lorebook = { name, description, entries };
+  const lorebook: Lorebook = { id, name, description, entries };
   writeJson(fileFor(id), lorebook);
   return lorebook;
 }
 
 export function saveLorebook(id: string, lorebook: Lorebook): Lorebook {
   if (!lorebook.name) lorebook.name = id;
+  lorebook.id = slugify(id);
   writeJson(fileFor(id), lorebook);
   return lorebook;
 }
