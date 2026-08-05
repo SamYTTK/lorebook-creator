@@ -2,7 +2,7 @@
 
 A SillyTavern-inspired **Lorebook Creator**: chat with any model through an OpenAI-compatible API while it **drafts, iterates and manages a structured lorebook** for you — either collaboratively or as an autonomous agent — with a **human-in-the-loop review queue** so nothing is committed without your approval.
 
-No Electron. It's a local web app: Node + Express backend, React + Vite frontend.
+It's a local web app: Node + Express backend, React + Vite frontend.
 
 ## Features
 
