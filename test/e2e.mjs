@@ -61,11 +61,14 @@ async function main() {
       body: JSON.stringify({ api: { baseUrl: 'http://localhost:3200/v1', apiKey: 'test-key', model: 'mock-plain', extraHeaders: {} } }),
     })).json();
 
-    // models list
+    // models list (POST; api key travels in the body)
     {
       console.log('■ models');
-      const r = await (await fetch(`${B}/api/llm/models`)).json();
-      ok(Array.isArray(r.models) && r.models.includes('mock-reasoner'), 'GET /api/llm/models returns mock models', JSON.stringify(r).slice(0, 120));
+      const r = await (await fetch(`${B}/api/llm/models`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl: 'http://localhost:3200/v1', apiKey: 'test-key' }),
+      })).json();
+      ok(Array.isArray(r.models) && r.models.includes('mock-reasoner'), 'POST /api/llm/models returns mock models', JSON.stringify(r).slice(0, 120));
     }
 
     // ---- lorebook CRUD ----

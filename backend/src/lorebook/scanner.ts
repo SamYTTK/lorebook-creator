@@ -6,6 +6,11 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** CJK / CJK-adjacent scripts have no word separators; whole-word is meaningless there. */
+function hasSeparatorlessScript(text: string): boolean {
+  return /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/u.test(text);
+}
+
 /**
  * Matches a single key against the scanned text, honoring the entry's
  * caseSensitive / matchWholeWords overrides (falling back to lorebook defaults).
@@ -17,7 +22,15 @@ export function keyMatches(key: string, text: string, entry: LorebookEntry): boo
   const haystack = caseSensitive ? text : text.toLowerCase();
   const needle = caseSensitive ? key : key.toLowerCase();
   if (wholeWords) {
-    const pattern = new RegExp(`(^|\\b)${escapeRegExp(needle)}(\\b|$)`, caseSensitive ? 'g' : 'gi');
+    if (hasSeparatorlessScript(key)) {
+      // CJK text has no word boundaries; fall back to substring matching.
+      return haystack.includes(needle);
+    }
+    // Unicode-aware word boundaries (\b is ASCII-only). Handles accents.
+    const pattern = new RegExp(
+      `(?<![\\p{L}\\p{N}_])${escapeRegExp(needle)}(?![\\p{L}\\p{N}_])`,
+      caseSensitive ? 'gu' : 'giu',
+    );
     return pattern.test(haystack);
   }
   return haystack.includes(needle);
@@ -25,7 +38,8 @@ export function keyMatches(key: string, text: string, entry: LorebookEntry): boo
 
 /**
  * Scan recent conversation text and return activated entries.
- * Honours constant entries, probability, scan window and entry depth limits.
+ * Honours constant entries, probability, scan window and key matching rules.
+ * (Entry-level recursion depth / scanDepth windows are not implemented.)
  */
 export function scanLorebook(lorebook: Lorebook, settings: LorebookSettings, chatText: string): ActivatedEntry[] {
   const out: ActivatedEntry[] = [];
@@ -48,14 +62,23 @@ export function scanLorebook(lorebook: Lorebook, settings: LorebookSettings, cha
         if (!entry.selective) break;
       }
     }
-    if (matchedKeys.length === 0) continue;
-    // selective logic: 0 = any, 1 = all, 2 = none
-    if (entry.selective) {
-      const hitCount = matchedKeys.length;
-      if (entry.selectiveLogic === 1 && hitCount < allKeys.length) continue;
-      if (entry.selectiveLogic === 2 && hitCount > 0) continue;
+    const hitCount = matchedKeys.length;
+    const logic = entry.selectiveLogic ?? 0;
+    // Activation logic: non-selective = any key; selective 0 = any, 1 = all, 2 = none.
+    let activated: boolean;
+    if (allKeys.length === 0) {
+      activated = true; // entry with no keys at all: always activate
+    } else if (!entry.selective) {
+      activated = hitCount > 0;
+    } else if (logic === 1) {
+      activated = hitCount === allKeys.length;
+    } else if (logic === 2) {
+      activated = hitCount === 0;
+    } else {
+      activated = hitCount > 0;
     }
-    out.push({ entry, entryId, matchedKeys, score: matchedKeys.length });
+    if (!activated) continue;
+    out.push({ entry, entryId, matchedKeys, score: hitCount });
   }
 
   // Sort: lower order number first; ties broken by more key matches, then key length.

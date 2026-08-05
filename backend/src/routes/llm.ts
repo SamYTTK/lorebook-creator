@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'node:crypto';
 import { getSettings } from '../settings.js';
 import { listModels, streamChat, chatCompletion } from '../llm/client.js';
 import { getPreset } from '../prompts/preset.js';
@@ -24,23 +25,27 @@ async function historyToChatMessages(history: HistoryMessage[]): Promise<ChatMes
   const out: ChatMessage[] = [];
   for (const m of history) {
     const parts = await historyMessageToContent(m);
+    // reasoning_content is an output-only field for reasoning models; it must
+    // never be sent back to the provider. We keep it only for UI display.
     const msg: ChatMessage = { role: m.role, content: parts };
-    if (m.reasoning) msg.reasoning_content = m.reasoning;
     out.push(msg);
   }
   return out;
 }
 
-router.get('/models', async (req: Request, res: Response) => {
+// POST /api/llm/models — fetch provider model list. API key travels in the body,
+// never in a URL query string. Cache key is a hash so keys never leak.
+router.post('/models', async (req: Request, res: Response) => {
   try {
-    const baseUrl = typeof req.query.baseUrl === 'string' ? req.query.baseUrl : undefined;
-    const apiKey = typeof req.query.apiKey === 'string' ? req.query.apiKey : undefined;
-    const cacheKey = `${baseUrl ?? ''}:${apiKey ?? ''}`;
-    if (modelListCache.has(cacheKey)) {
-      return res.json({ models: modelListCache.get<string[]>(cacheKey)! });
+    const body = (req.body || {}) as { baseUrl?: string; apiKey?: string };
+    const baseUrl = body.baseUrl || undefined;
+    const apiKey = body.apiKey || undefined;
+    const hash = createHash('sha256').update(`${baseUrl ?? ''}:${apiKey ?? ''}`).digest('hex').slice(0, 20);
+    if (modelListCache.has(hash)) {
+      return res.json({ models: modelListCache.get<string[]>(hash)! });
     }
     const models = await listModels(baseUrl, apiKey);
-    modelListCache.set(cacheKey, models);
+    modelListCache.set(hash, models);
     res.json({ models });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -137,7 +142,6 @@ router.post('/chat', async (req: Request, res: Response) => {
   const reasoning: string[] = [];
 
   const send = (event: string, data: unknown) => sseSend(res, event, data);
-  let completed = false;
 
   try {
     if (body.agent) {
@@ -147,6 +151,7 @@ router.post('/chat', async (req: Request, res: Response) => {
           model: body.model,
           maxTurns: body.maxTurns,
           autonomy: body.autonomy ?? settings.agent.autonomy,
+          reviewRequired: body.reviewRequired,
           signal: abortController.signal,
         },
         {
@@ -156,7 +161,8 @@ router.post('/chat', async (req: Request, res: Response) => {
           toolCallResult: (r) => send('tool_call_result', r),
           turn: (n) => send('turn', { turn: n }),
           done: (r) => send('agent_done', { usage: r.usage, finishReason: r.finishReason }),
-          error: (e) => { send('error', { message: e.message }); },
+          // route-level catch below reports the error once; emitter is a no-op here
+          error: () => undefined,
         },
       );
     } else {
@@ -176,25 +182,22 @@ router.post('/chat', async (req: Request, res: Response) => {
     }
 
     assistantMsg.reasoning = reasoning.join('');
-    if (assistantMsg.content) {
-      updateMessage(workingSession.id, assistantId, { content: assistantMsg.content, reasoning: assistantMsg.reasoning });
-    } else {
-      // nothing produced (e.g. fully tool-driven)
-      updateMessage(workingSession.id, assistantId, { content: assistantMsg.content || '(no text output)', reasoning: assistantMsg.reasoning });
-    }
-    completed = true;
-    send('final', { messageId: assistantId });
+    updateMessage(workingSession.id, assistantId, {
+      content: assistantMsg.content || '(no text output)',
+      reasoning: assistantMsg.reasoning,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     send('error', { message });
     try {
-      if (assistantMsg.content) {
-        updateMessage(workingSession.id, assistantId, { content: assistantMsg.content, reasoning: reasoning.join('') });
-      } else {
-        updateMessage(workingSession.id, assistantId, { content: `(error: ${message})`, reasoning: reasoning.join('') });
-      }
+      updateMessage(workingSession.id, assistantId, {
+        content: assistantMsg.content || `(error: ${message})`,
+        reasoning: reasoning.join(''),
+      });
     } catch { /* session may have changed */ }
   } finally {
+    // Always signal completion so the frontend never gets stuck "streaming".
+    send('final', { messageId: assistantId });
     queue.close();
     await pump;
     res.end();
@@ -219,7 +222,12 @@ router.post('/chat/nonstream', async (req: Request, res: Response) => {
 });
 
 router.get('/cache', (_req: Request, res: Response) => {
-  res.json({ cache: cache.status(), modelListCache: modelListCache.status() });
+  const hashKey = (k: string) => createHash('sha256').update(k).digest('hex').slice(0, 12);
+  const modelKeys = modelListCache.status().keys.map(hashKey);
+  res.json({
+    cache: { ...cache.status(), keys: cache.status().keys.map(hashKey) },
+    modelListCache: { ...modelListCache.status(), keys: modelKeys },
+  });
 });
 
 router.post('/cache/clear', (_req: Request, res: Response) => {

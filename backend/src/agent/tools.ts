@@ -9,6 +9,8 @@ export interface ToolContext {
   chatText: string;
   /** Current history (for reasoning about the scene). */
   history: ChatMessage[];
+  /** Per-request override of the settings reviewRequired flag. */
+  reviewRequired?: boolean;
 }
 
 export interface ToolDefinition {
@@ -146,7 +148,7 @@ export async function executeTool(
     return { result: 'ERROR: Current lorebook not found on disk.' };
   }
 
-  const reviewRequired = settings.agent.reviewRequired;
+  const reviewRequired = ctx.reviewRequired ?? settings.agent.reviewRequired;
   const entries = Object.entries(lorebook.entries);
   const stage = (type: StagedChange['type'], entryId: string | undefined, proposed: Partial<LorebookEntry> & { keys: string[]; content: string; key: string }, previous?: Partial<LorebookEntry>): StagedChange | null => {
     if (!reviewRequired) return null;
@@ -250,9 +252,13 @@ export async function executeTool(
         const staged = stage(id ? 'update' : 'create', id, proposed, id ? { ...lorebook.entries[id] } : undefined);
         if (staged) { results.push(`STAGED (${staged.id}): ${id ? `update ${id}` : `new entry [${keys.join(', ')}]`}`); continue; }
         const book = upsertEntry(lorebookId, id || null, proposed);
+        if (id) {
+          results.push(`Updated ${id} keys=[${keys.join(', ')}]`);
+          continue;
+        }
         const created = Object.values(book.entries).at(-1)!;
         const eid = Object.keys(book.entries).find((k) => book.entries[k] === created)!;
-        results.push(`${id ? 'Updated' : 'Created'} ${eid} keys=[${keys.join(', ')}]`);
+        results.push(`Created ${eid} keys=[${keys.join(', ')}]`);
       }
       return { result: results.join('\n') };
     }

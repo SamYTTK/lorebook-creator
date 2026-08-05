@@ -87,9 +87,15 @@ export async function extractVideoFrames(filePath: string, maxFrames = 4, maxDim
   if (!FFMPEG_BIN) throw new Error('ffmpeg is not available in this build');
   const stat = fs.statSync(filePath);
   const cache = frameCache();
-  const cacheKey = `${path.basename(filePath)}:${stat.mtimeMs}:${maxFrames}`;
+  // maxDim is part of the cache key so size changes never serve stale frames.
+  const cacheKey = `${path.basename(filePath)}:${stat.mtimeMs}:${maxFrames}:${maxDim}`;
   if (cache[cacheKey]) {
-    return cache[cacheKey].map((f) => readAsBase64(path.join(VIDEO_FRAMES_DIR, f)));
+    const paths = cache[cacheKey].map((f) => path.join(VIDEO_FRAMES_DIR, f));
+    if (paths.every((p) => fs.existsSync(p))) {
+      return paths.map((p) => readAsBase64(p));
+    }
+    // stale cache entry (frames pruned/deleted) — fall through to re-extract
+    delete cache[cacheKey];
   }
 
   const outDir = VIDEO_FRAMES_DIR;
@@ -111,6 +117,18 @@ export async function extractVideoFrames(filePath: string, maxFrames = 4, maxDim
 
   cache[cacheKey] = frames;
   saveFrameCache(cache);
+
+  // Prune old frame sets for this video that are no longer referenced by the cache.
+  // The fresh frames are in the cache now, so they are never pruned.
+  const referenced = new Set(Object.values(cache).flat());
+  const baseName = path.basename(filePath, path.extname(filePath));
+  for (const f of fs.readdirSync(outDir)) {
+    const full = path.join(outDir, f);
+    if (f.startsWith(baseName) && !referenced.has(full)) {
+      try { fs.unlinkSync(full); } catch { /* ignore */ }
+    }
+  }
+
   return frames.map((f) => readAsBase64(f));
 }
 
@@ -125,7 +143,16 @@ export async function attachmentToParts(attachment: Attachment): Promise<Content
     return [{ type: 'image_url', image_url: { url: `data:${mimeFromFile(filePath)};base64,${readAsBase64(filePath)}` } }];
   }
   if (attachment.kind === 'audio') {
-    const format = (attachment.mime.split('/')[1] || 'wav').replace('mpeg', 'mp3').replace('wave', 'wav').replace('x-wav', 'wav') as 'wav' | 'mp3' | 'ogg' | 'aac' | 'flac' | 'opus';
+    // OpenAI input_audio supports: wav, mp3, ogg, aac, flac, opus. Map m4a/mp4 -> aac.
+    const fmtMap: Record<string, 'wav' | 'mp3' | 'ogg' | 'aac' | 'flac' | 'opus'> = {
+      wav: 'wav', wave: 'wav', 'x-wav': 'wav', 'x-wave': 'wav',
+      mpeg: 'mp3', mp3: 'mp3', 'mp3a': 'mp3',
+      ogg: 'ogg', oga: 'ogg', 'ogg-opus': 'opus', opus: 'opus',
+      aac: 'aac', 'aacp': 'aac', 'm4a': 'aac', mp4: 'aac', 'x-m4a': 'aac', 'mp4a': 'aac',
+      flac: 'flac', 'x-flac': 'flac',
+    };
+    const raw = (attachment.mime.split('/')[1] || 'wav').toLowerCase();
+    const format = fmtMap[raw] ?? 'wav';
     return [{ type: 'input_audio', input_audio: { data: readAsBase64(filePath), format } }];
   }
   if (attachment.kind === 'video') {

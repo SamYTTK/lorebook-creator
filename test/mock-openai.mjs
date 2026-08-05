@@ -23,6 +23,19 @@ app.get('/v1/models', (_req, res) => {
 
 app.post('/v1/chat/completions', (req, res) => {
   const { messages, stream, tools, model } = req.body;
+
+  // Guard: reasoning_content is an output-only field and must never be re-sent.
+  const leakingReasoning = (messages || []).some((m) => Object.prototype.hasOwnProperty.call(m || {}, 'reasoning_content'));
+  if (leakingReasoning) {
+    res.status(400).json({ error: 'request contained forbidden reasoning_content field' });
+    return;
+  }
+  // Guard: an assistant message must never open the message list.
+  if (Array.isArray(messages) && messages[0]?.role === 'assistant') {
+    res.status(400).json({ error: 'request opened with an assistant message' });
+    return;
+  }
+
   if (stream !== true) {
     // non-streaming path
     const last = messages[messages.length - 1];

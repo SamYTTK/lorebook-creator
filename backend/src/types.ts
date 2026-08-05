@@ -19,7 +19,7 @@ export interface ContentInputAudioPart {
 
 export type ContentPart = ContentTextPart | ContentImagePart | ContentInputAudioPart;
 
-export type MessageContent = string | ContentPart[];
+export type MessageContent = string | ContentPart[] | null;
 
 export interface ToolCall {
   id: string;

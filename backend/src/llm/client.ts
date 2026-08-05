@@ -78,7 +78,7 @@ export async function chatCompletion(input: ChatRequestInput): Promise<OpenAI.Ch
   const settings = getSettings();
   const client = buildClient(settings.api.baseUrl, settings.api.apiKey, settings.api.extraHeaders);
   const model = resolveModel(input.model);
-  const params = buildParams(input.params);
+  const params = stripUnsupportedParams(model, buildParams(input.params));
   return client.chat.completions.create({
     model,
     messages: input.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
@@ -94,6 +94,25 @@ export async function chatCompletion(input: ChatRequestInput): Promise<OpenAI.Ch
  * The emitter is driven synchronously within this async function; the route layer
  * bridges it to an SSE stream.
  */
+/** o-series (o1/o3/o4 etc.) reject several sampling params; strip them. */
+function isOSeries(model: string): boolean {
+  return /(^|\/)o\d/i.test(model) || /o\d?-mini|o\d?-pro|o\d?-high/i.test(model);
+}
+
+function stripUnsupportedParams(model: string, params: Record<string, unknown>): Record<string, unknown> {
+  if (!isOSeries(model)) return params;
+  const out = { ...params };
+  for (const k of ['temperature', 'top_p', 'top_k', 'presence_penalty', 'frequency_penalty', 'seed', 'n']) {
+    delete out[k];
+  }
+  // o-series requires max_completion_tokens; convert max_tokens if present.
+  if (out.max_tokens && !out.max_completion_tokens) {
+    out.max_completion_tokens = out.max_tokens;
+    delete out.max_tokens;
+  }
+  return out;
+}
+
 export async function streamChat(
   input: ChatRequestInput,
   emitter: StreamEmitter,
@@ -101,13 +120,8 @@ export async function streamChat(
   const settings = getSettings();
   const client = buildClient(settings.api.baseUrl, settings.api.apiKey, settings.api.extraHeaders);
   const model = resolveModel(input.model);
-  const params = buildParams(input.params);
-
-  // o-series models require max_completion_tokens, not max_tokens.
-  if (/^o\d/i.test(model) && params.max_tokens && !params.max_completion_tokens) {
-    params.max_completion_tokens = params.max_tokens;
-    delete params.max_tokens;
-  }
+  let params = buildParams(input.params);
+  params = stripUnsupportedParams(model, params);
 
   let content = '';
   let reasoning = '';
@@ -165,7 +179,8 @@ export async function streamChat(
   }
 
   if (input.signal?.aborted) {
-    emitter.error(new Error('aborted'));
+    // Aborted requests are not errors: the partial stream is persisted by the
+    // caller and the frontend already tore down the fetch.
     return;
   }
 

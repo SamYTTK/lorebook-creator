@@ -317,12 +317,15 @@ export const useStore = create<StoreState>((set, get) => {
             }));
           },
           onTurn: (n) => set((st) => ({ streaming: { ...st.streaming, turns: n } })),
-          onError: (msg) => set((st) => ({ streaming: { ...st.streaming, error: msg } })),
+          onError: (msg) => set((st) => ({ streaming: { ...st.streaming, error: msg, active: false } })),
           onFinal: async () => {
-            set((st) => ({ streaming: { ...st.streaming, active: false } }));
+            set((st) => ({ streaming: { ...st.streaming, active: false, error: null } }));
             abortController = null;
+            // Ignore stale completion for a session the user switched away from mid-stream.
+            if (get().currentSessionId !== sessionId) return;
             try {
               const session = await api.getSession(sessionId);
+              if (get().currentSessionId !== sessionId) return;
               set({ currentSession: session, messages: session.messages });
             } catch { /* ignore */ }
             await Promise.all([get().refreshSessions(), get().refreshLorebooks(), get().refreshReview()]);
@@ -336,7 +339,7 @@ export const useStore = create<StoreState>((set, get) => {
         abortController.abort();
         abortController = null;
       }
-      set((st) => ({ streaming: { ...st.streaming, active: false } }));
+      set((st) => ({ streaming: { ...st.streaming, active: false, error: null } }));
     },
 
     updatePanel: (id, patch) => {

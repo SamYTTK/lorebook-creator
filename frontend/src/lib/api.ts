@@ -25,7 +25,7 @@ export const api = {
   validateConnection: (baseUrl: string, apiKey: string) =>
     request<{ ok: boolean; error?: string; modelCount?: number; models?: string[] }>('/api/settings/validate-connection', { method: 'POST', body: JSON.stringify({ baseUrl, apiKey }) }),
   getModels: (baseUrl?: string, apiKey?: string) =>
-    request<{ models: string[] }>(`/api/llm/models?${new URLSearchParams(baseUrl ? { baseUrl, apiKey: apiKey || '' } : {}).toString()}`),
+    request<{ models: string[] }>('/api/llm/models', { method: 'POST', body: JSON.stringify({ baseUrl: baseUrl || undefined, apiKey: apiKey || undefined }) }),
 
   // lorebooks
   listLorebooks: () => request<{ lorebooks: LorebookSummary[]; currentId: string | null }>('/api/lorebooks'),

@@ -25,6 +25,15 @@ export function assembleMessages(
 
   const strip = (s: string) => s.replace(/^\s+|\s+$/g, '');
 
+  // ST-style macros advertised in the UI: {user}, {char}, {time}, {newline}.
+  const render = (content: string): string => content
+    .replace(/\{user\}/gi, 'User')
+    .replace(/\{char\}/gi, 'Character')
+    .replace(/\{time\}/gi, new Date().toLocaleString())
+    .replace(/\{newline\}/gi, '\n');
+
+  const renderBlock = (block: PromptBlock) => (block.strip ? strip(render(block.content)) : render(block.content));
+
   const enabledBlocks = (blocks || []).filter((b) => b.enabled);
 
   const systemBlocks = enabledBlocks
@@ -35,7 +44,7 @@ export function assembleMessages(
     if (!strip(block.content)) continue;
     out.push({
       role: block.role,
-      content: block.strip ? strip(block.content) : block.content,
+      content: renderBlock(block),
       ...(block.name ? { name: block.name } : {}),
     });
   }
@@ -79,12 +88,17 @@ export function assembleMessages(
       for (const { block } of [...lorebookBlocks, ...top, ...bottom]) {
         out.push({
           role: block.role,
-          content: block.strip ? strip(block.content) : block.content,
+          content: renderBlock(block),
           ...(block.name ? { name: block.name } : {}),
         });
       }
     }
     if (i < history.length) out.push(history[i]);
+  }
+
+  // Providers reject an assistant message leading the array; clamp to system.
+  if (out.length > 0 && out[0].role === 'assistant') {
+    out[0].role = 'system';
   }
 
   return out;

@@ -36,11 +36,14 @@ export async function runAgentLoop(
     maxTurns?: number;
     signal?: AbortSignal;
     autonomy?: 'off' | 'collaborative' | 'autonomous';
+    /** Per-request override of the settings reviewRequired flag. */
+    reviewRequired?: boolean;
   },
   emitter: AgentEmitter,
 ): Promise<{ content: string; reasoning: string; toolCalls: number }> {
   const settings = getSettings();
-  const maxTurns = input.maxTurns ?? settings.agent.maxTurns ?? 4;
+  // maxTurns = maximum number of LLM calls (>= 1). Each tool round consumes one turn.
+  const maxTurns = Math.max(1, Math.round(input.maxTurns ?? settings.agent.maxTurns ?? 4));
   const autonomy = input.autonomy ?? settings.agent.autonomy;
 
   const enabledToolNames = new Set(settings.agent.enabledTools);
@@ -61,7 +64,7 @@ export async function runAgentLoop(
   let toolCallsMade = 0;
   const hasTools = tools.length > 0 && autonomy !== 'off';
 
-  for (let turn = 0; turn <= maxTurns; turn++) {
+  for (let turn = 0; turn < maxTurns; turn++) {
     emitter.turn(turn);
     const result: StreamResult = await new Promise((resolve, reject) => {
       let settled = false;
@@ -82,10 +85,10 @@ export async function runAgentLoop(
       );
     });
 
+    // reasoning_content is an output-only field for reasoning models; never re-sent.
     messages.push({
       role: 'assistant',
-      content: result.content || null as unknown as string,
-      ...(result.reasoning ? { reasoning_content: result.reasoning } : {}),
+      content: result.content || null,
       ...(result.toolCalls.length ? { tool_calls: result.toolCalls } : {}),
     });
 
@@ -101,7 +104,11 @@ export async function runAgentLoop(
     for (const call of result.toolCalls) {
       let parsed: Record<string, unknown> = {};
       try { parsed = JSON.parse(call.function.arguments || '{}'); } catch { /* keep {} */ }
-      const { result: toolResult, staged } = await executeTool(call.function.name, parsed, { chatText, history: messages });
+      const { result: toolResult, staged } = await executeTool(call.function.name, parsed, {
+        chatText,
+        history: messages,
+        reviewRequired: input.reviewRequired,
+      });
       emitter.toolCallResult({
         id: call.id,
         name: call.function.name,

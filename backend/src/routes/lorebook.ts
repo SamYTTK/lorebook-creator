@@ -46,6 +46,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 
 router.post('/select', (req: Request, res: Response) => {
   const { id } = req.body as { id: string | null };
+  if (id && !getLorebook(id)) return res.status(404).json({ error: 'Lorebook not found' });
   saveSettings({ lorebookId: id });
   res.json({ ok: true, lorebookId: id });
 });
