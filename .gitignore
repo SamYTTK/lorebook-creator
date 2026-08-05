@@ -1,0 +1,27 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+.env.local
+data/media/*
+data/cache/*
+!data/media/.gitkeep
+!data/cache/.gitkeep
+
+# Local settings & API keys never get committed
+data/settings.json
+data/chats/*
+data/lorebooks/*
+data/prompts/*
+data/review/*
+data/video-frames/*
+!data/chats/.gitkeep
+!data/lorebooks/.gitkeep
+!data/prompts/.gitkeep
+!data/review/.gitkeep
+!data/video-frames/.gitkeep
+
+# Sample data
+!data/lorebooks/sample*.json
+!data/prompts/sample*.json
