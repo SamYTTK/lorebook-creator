@@ -122,7 +122,10 @@ router.post('/chat', async (req: Request, res: Response) => {
       lorebookCtx,
     );
   } else {
-    messages = assembleMessages(chatMessages, blocks, lorebookCtx);
+    const systemBlocks = settings.systemPrompt
+      ? [{ id: 'main', name: 'System', content: settings.systemPrompt, role: 'system' as const, depth: 0, position: 0, injection: false, enabled: true, strip: true }]
+      : [];
+    messages = assembleMessages(chatMessages, [...systemBlocks, ...blocks], lorebookCtx);
   }
 
   startSse(res);

@@ -83,6 +83,12 @@ export default function SettingsPanel() {
       </div>
       {validation && <div className={`notice ${validation.ok ? 'info' : 'err'}`}>{validation.message}</div>}
 
+      <div className="section-title">Main system prompt</div>
+      <div className="field">
+        <label>Applied to every chat (leave empty for none)</label>
+        <textarea rows={6} value={settings.systemPrompt} onChange={(e) => void saveSettings({ systemPrompt: e.target.value })} placeholder="You are the narrator of a gritty fantasy world. Use {user} / {char} placeholders if you like." />
+      </div>
+
       <div className="section-title">Generation parameters</div>
       {PARAM_FIELDS.map((f) => (
         <div className="field" key={f.key}>

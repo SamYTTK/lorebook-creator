@@ -183,6 +183,8 @@ export interface ChatSession {
 export interface AppSettings {
   api: ApiConnection & { baseUrl: string; apiKey: string; model: string };
   params: GenerationParams;
+  /** Main system prompt applied to every (non-agent) chat. */
+  systemPrompt: string;
   lorebookId: string | null;
   lorebook: LorebookSettings;
   agent: AgentConfig;

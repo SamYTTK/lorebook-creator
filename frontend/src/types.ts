@@ -125,6 +125,8 @@ export interface GenerationParams {
 export interface AppSettings {
   api: { baseUrl: string; apiKey: string; model: string; extraHeaders: Record<string, string> };
   params: GenerationParams;
+  /** Main system prompt applied to every (non-agent) chat. */
+  systemPrompt: string;
   lorebookId: string | null;
   lorebook: {
     insertionDepth: number;

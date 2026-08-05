@@ -23,6 +23,7 @@ const defaultSettings: AppSettings = {
     reasoning_effort: null,
   },
   lorebookId: null,
+  systemPrompt: '',
   lorebook: {
     insertionDepth: 0,
     role: 'system',
